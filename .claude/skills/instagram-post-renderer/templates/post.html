@@ -1,0 +1,169 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Instagram post</title>
+<style>
+  /* Fonts are inlined as base64 by render_post.py so rendering never touches the network. */
+  @font-face { font-family:'Fraunces'; font-weight:400; font-style:normal; src:url({{FONT_FRAUNCES_REGULAR}}) format('truetype'); }
+  @font-face { font-family:'Fraunces'; font-weight:600; font-style:normal; src:url({{FONT_FRAUNCES_SEMIBOLD}}) format('truetype'); }
+  @font-face { font-family:'Fraunces'; font-weight:700; font-style:normal; src:url({{FONT_FRAUNCES_BOLD}}) format('truetype'); }
+  @font-face { font-family:'Instrument Sans'; font-weight:400; font-style:normal; src:url({{FONT_INSTRUMENT_REGULAR}}) format('truetype'); }
+  @font-face { font-family:'Instrument Sans'; font-weight:600; font-style:normal; src:url({{FONT_INSTRUMENT_BOLD}}) format('truetype'); }
+
+  /* Gallery, kept warm — tokens from brand-strategist/references/identity.md.
+     Light values only: this canvas is always paper, never a themed surface. */
+  :root {
+    --paper:#FAF9F5;
+    --ink:#17150F;
+    --muted:#6B655A;
+    --ochre:#9A6516;
+    --ochre-deep:#7C5010;
+    --wash:#F2EEE4;
+    --rule:#E2DDD2;
+  }
+
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { width:1080px; height:1350px; }
+  body {
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Instrument Sans', system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:geometricPrecision;
+  }
+
+  .canvas {
+    width:1080px; height:1350px;
+    padding:88px;
+    display:flex; flex-direction:column;
+  }
+
+  /* ---- header ---------------------------------------------------------- */
+  .eyebrow {
+    font-size:19px; font-weight:600;
+    letter-spacing:.2em; text-transform:uppercase;
+    color:var(--muted);
+  }
+  /* The single accent. One ochre mark per canvas — identity.md's hardest rule.
+     Emphasis anywhere else on this page comes from size, weight, or space. */
+  .accent { width:64px; height:3px; background:var(--ochre); margin-top:24px; }
+
+  /* ---- body ------------------------------------------------------------ */
+  .body { flex:1; display:flex; flex-direction:column; justify-content:center; padding:64px 0; min-height:0; }
+
+  h1 {
+    font-family:'Fraunces', Georgia, serif;
+    font-weight:600;
+    line-height:1.06;
+    letter-spacing:-.02em;
+    text-wrap:balance;
+    color:var(--ink);
+    font-size:96px; /* replaced by the autofit pass below */
+  }
+
+  .deck {
+    margin-top:38px;
+    font-size:32px; line-height:1.55;
+    color:var(--muted);
+    max-width:760px;
+    text-wrap:pretty;
+  }
+
+  /* Real screenshots only. identity.md rules out stock and lifestyle imagery,
+     so this slot is for actual work or nothing at all. */
+  .shot { margin-top:52px; border:1px solid var(--rule); overflow:hidden; line-height:0; }
+  .shot img { width:100%; height:100%; object-fit:cover; object-position:top center; display:block; }
+
+  /* Philosophy posts get quieter: smaller ceiling on the headline, more air. */
+  [data-pillar="philosophy"] .body { padding:96px 0; }
+  [data-pillar="philosophy"] .deck { margin-top:44px; }
+
+  /* ---- footer ---------------------------------------------------------- */
+  footer {
+    display:flex; justify-content:space-between; align-items:flex-end;
+    border-top:1px solid var(--rule);
+    padding-top:30px;
+  }
+  .mark { font-size:25px; color:var(--muted); letter-spacing:.01em; }
+  .mark img { height:34px; width:auto; display:block; }
+  .project { font-size:25px; color:var(--muted); text-align:right; }
+</style>
+
+<body>
+  <div class="canvas" data-pillar="{{PILLAR}}">
+    <header>
+      <div class="eyebrow">{{EYEBROW}}</div>
+      <div class="accent"></div>
+    </header>
+
+    <div class="body" id="body">
+      <h1 id="headline">{{HEADLINE}}</h1>
+      {{DECK_BLOCK}}
+      {{SHOT_BLOCK}}
+    </div>
+
+    <footer>
+      <div class="mark">{{LOGO_BLOCK}}</div>
+      <div class="project">{{FOOTER_RIGHT}}</div>
+    </footer>
+  </div>
+
+<script>
+  /* Autofit: shrink the headline until the body column fits its box.
+     Big type is the point, so start at the ceiling and only step down as needed. */
+  (function () {
+    var body = document.getElementById('body');
+    var h1 = document.getElementById('headline');
+    var pillar = document.querySelector('.canvas').dataset.pillar;
+
+    var max = pillar === 'philosophy' ? 86 : 104;
+    var min = 38;
+
+    /* Measure the children directly. The column is centred, so overflow spills
+       equally above and below and scrollHeight never reports it. */
+    function contentHeight() {
+      var total = 0;
+      for (var i = 0; i < body.children.length; i++) {
+        var el = body.children[i];
+        var cs = getComputedStyle(el);
+        total += el.getBoundingClientRect().height +
+                 parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
+      }
+      return total;
+    }
+
+    /* clientHeight includes the column's own vertical padding, which the
+       children do not get to use. Measure against the content box only. */
+    function availableHeight() {
+      var cs = getComputedStyle(body);
+      return body.clientHeight -
+             parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    }
+
+    /* Fill at most 90% of the column. Air is the brief - type that runs wall
+       to wall is technically inside the canvas but off the brand. */
+    var AIR = 0.9;
+
+    function fits(px) {
+      h1.style.fontSize = px + 'px';
+      return contentHeight() <= availableHeight() * AIR;
+    }
+
+    // Binary search the largest whole pixel size that still fits.
+    var lo = min, hi = max, best = min;
+    while (lo <= hi) {
+      var mid = Math.floor((lo + hi) / 2);
+      if (fits(mid)) { best = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    h1.style.fontSize = best + 'px';
+    document.documentElement.dataset.headlineSize = best;
+    // Even the floor can overflow if the headline is far too long. Flag only a
+    // true overrun of the canvas, not merely the loss of the 10% air margin.
+    document.documentElement.dataset.overflow =
+      contentHeight() <= availableHeight() ? '0' : '1';
+    // Line count is the honest signal that a headline is really a paragraph.
+    var lh = parseFloat(getComputedStyle(h1).lineHeight);
+    document.documentElement.dataset.headlineLines =
+      Math.max(1, Math.round(h1.getBoundingClientRect().height / lh));
+  })();
+</script>
+</body>
