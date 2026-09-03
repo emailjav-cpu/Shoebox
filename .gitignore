@@ -3,3 +3,6 @@ build/
 *.pyc
 __pycache__/
 .DS_Store
+
+# The Notion calendar ID stays out of this public repo.
+.claude/skills/instagram-post-renderer/calendar.local.json

@@ -80,9 +80,11 @@ After rendering, create the calendar row. Use the Notion tools directly:
    `upload_headers`. (That endpoint is on `api.notion.com`; if the sandbox
    blocks it, push the file somewhere publicly readable and use
    `notion-create-attachment` with `source_url` instead.)
-2. `notion-create-pages` into the **Instagram content calendar** data source
-   (`collection://e275ceeb-c069-4876-bcbb-42e816b8c560`), setting `Name`,
-   `Pillar`, `Project`, `Caption`, `Schedule date`, and `Status`.
+2. `notion-create-pages` into the **Instagram content calendar** data source,
+   setting `Name`, `Pillar`, `Project`, `Caption`, `Schedule date`, and
+   `Status`. Resolve the data source ID first — see
+   [Finding the calendar](references/notion-calendar.md#finding-the-calendar).
+   It is deliberately not written down in this repository.
 3. Attach the upload to the row's `Image` property **and** place the same image
    in the page body. Both are required: the property makes the row scannable in
    the table, and the body block is the only one that yields a public URL the

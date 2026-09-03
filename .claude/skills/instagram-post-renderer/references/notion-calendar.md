@@ -2,11 +2,24 @@
 
 Top-level Notion database. One row per post.
 
-- **Database:** https://app.notion.com/p/8d2001de09df42fba1a1bf5fe820b7b3
-- **Data source:** `collection://e275ceeb-c069-4876-bcbb-42e816b8c560`
+## Finding the calendar
+
+The database and data source IDs are **not stored in this repository** — it is
+public, and where Javier's content calendar lives is not something to publish.
+Resolve the ID at run time instead, in this order:
+
+1. **A pinned local copy.** If `calendar.local.json` exists at the skill root,
+   use the `data_source_id` in it. That file is gitignored; copy
+   `calendar.example.json` over it and fill in the ID once.
+2. **Otherwise, look it up.** Use the Notion `search` tool for the database
+   titled *Instagram content calendar*, then `fetch` it — the response carries
+   the `collection://…` data source URL in its `<data-source>` tag.
 
 Pass the data source ID (not the database ID) as `data_source_id` when creating
 pages, and as the table name when querying.
+
+If the search returns more than one match, stop and ask rather than guessing.
+Writing to the wrong database is not something to recover from silently.
 
 ## Properties
 
@@ -66,7 +79,7 @@ The routine's selection rule, as SQL against the data source:
 
 ```sql
 SELECT url, "Name", "Caption", "date:Schedule date:start"
-FROM "collection://e275ceeb-c069-4876-bcbb-42e816b8c560"
+FROM "collection://<data source ID>"   -- resolved as above
 WHERE "Status" = 'approved'
   AND date("date:Schedule date:start") <= date('now')
 ORDER BY date("date:Schedule date:start") ASC, createdTime ASC

@@ -1,0 +1,5 @@
+{
+  "_comment": "Copy this to calendar.local.json and fill in the real ID. calendar.local.json is gitignored so the ID stays out of this public repository. Leave it absent to have the skill look the database up by name instead.",
+  "database_name": "Instagram content calendar",
+  "data_source_id": "collection://xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+}
