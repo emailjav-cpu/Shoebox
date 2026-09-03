@@ -77,12 +77,16 @@ After rendering, create the calendar row. Use the Notion tools directly:
 
 1. `notion-create-file-upload` with the rendered filename, then POST the JPEG
    as multipart `file` to the returned `upload_url` with the returned
-   `upload_headers`.
+   `upload_headers`. (That endpoint is on `api.notion.com`; if the sandbox
+   blocks it, push the file somewhere publicly readable and use
+   `notion-create-attachment` with `source_url` instead.)
 2. `notion-create-pages` into the **Instagram content calendar** data source
    (`collection://e275ceeb-c069-4876-bcbb-42e816b8c560`), setting `Name`,
    `Pillar`, `Project`, `Caption`, `Schedule date`, and `Status`.
-3. Attach the upload to the row's `Image` property, and put the same image in
-   the page body so it is visible when the row is opened.
+3. Attach the upload to the row's `Image` property **and** place the same image
+   in the page body. Both are required: the property makes the row scannable in
+   the table, and the body block is the only one that yields a public URL the
+   posting step can hand to Meta.
 
 Full property list and the exact option strings are in
 [`references/notion-calendar.md`](references/notion-calendar.md).
@@ -109,6 +113,10 @@ The scheduled routine is the only thing that posts, and it will not invent,
 draft, edit, or approve content. If nothing is approved, it does nothing and
 says so. That is a normal outcome, not a failure.
 
+The routine is **Auto post Insta**, cloud-hosted so it runs with the laptop
+closed, firing 9:07am ET Monday–Saturday. Its schedule, guarantees and remaining
+setup are in [`references/routine.md`](references/routine.md).
+
 ## Posting (used by the routine, not by hand)
 
 `scripts/post_to_instagram.py` publishes one image through the Meta Graph API.
@@ -126,9 +134,10 @@ Reads `IG_BUSINESS_ACCOUNT_ID` and `IG_ACCESS_TOKEN` from the environment.
 without posting — use it to check a setup change.
 
 Meta fetches `image_url` from its own servers, so it must be publicly reachable
-at that moment. Notion's file URLs are signed and expire in about an hour, which
-is fine: fetch the row and post in the same run, and never store the URL for
-later.
+at that moment. Take that URL from the **image block in the page body** — the
+`Image` property returns an internal reference Meta cannot resolve. Notion signs
+these URLs for **5 minutes**, so fetch the row and post in the same step, and
+never store the URL for later.
 
 Setting up the two credentials is a one-time job on Meta's side, written up in
 [`references/meta-setup.md`](references/meta-setup.md).

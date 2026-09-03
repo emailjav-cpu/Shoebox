@@ -31,10 +31,23 @@ JPEG is attached to the row's `Image` files property and also placed in the page
 body. Opening the row shows the finished post; the table view stays readable.
 
 This also gives the routine what Meta needs. Notion serves attachments from
-signed URLs that anyone can fetch without auth, which is exactly the "publicly
-accessible image URL" the Graph API requires — no separate image host, no CDN
-bill. The signature expires after roughly an hour, so the URL must be fetched
-fresh in the same run that posts it, and never cached.
+signed S3 URLs that anyone can fetch without auth, which is exactly the
+"publicly accessible image URL" the Graph API requires — no separate image
+host, no CDN bill.
+
+Two details matter, and both were verified against the live database:
+
+**The URL comes from the page body, not the `Image` property.** Fetching the
+row returns the property as an internal `file://{...}` reference that Meta
+cannot resolve. The image block in the page body is what returns a real
+`https://prod-files-secure.s3.…` URL. This is why the renderer puts the image
+in *both* places: the property makes the row scannable, the body block is what
+actually makes posting possible.
+
+**The signature expires in 5 minutes** (`X-Amz-Expires=300`), not an hour.
+Fetch the row and post in the same step, and never store the URL. If a run
+stalls between fetching and posting, re-fetch the page rather than reusing
+the URL.
 
 ## Creating a row
 
