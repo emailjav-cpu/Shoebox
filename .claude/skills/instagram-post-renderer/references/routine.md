@@ -34,25 +34,20 @@ Cron runs in UTC, so `13:07 UTC` is 9:07am **EDT**. When ET falls back to EST in
 November this becomes 8:07am. To hold 9am year-round, change the hour to `14`
 for the winter months and back to `13` in March.
 
-## Setup this routine still needs
+## Setup status
 
-Three things, all outside the repo:
+All of this lives outside the repo, on the routine and its environment.
 
-1. **Attach the Notion connector to the routine.** It was created without one —
-   the API path for granting connectors is not enabled on this account, and a
-   routine with no connectors fires sessions that have no Notion tools at all,
-   so every run would fail at step 2. Fix it in **claude.ai → Routines → Auto
-   post Insta → connectors**, and attach only Notion.
-2. **Set the two environment variables** on the JD Design environment:
-   `IG_BUSINESS_ACCOUNT_ID` and `IG_ACCESS_TOKEN`. See
-   [`meta-setup.md`](meta-setup.md).
-3. **Allow `graph.facebook.com`** in that environment's network policy. The
-   default policy blocks it, and the posting step cannot reach Meta without it.
-   `prod-files-secure.s3.us-west-2.amazonaws.com` (where Notion serves the
-   image) is already reachable.
+| | State |
+|---|---|
+| Notion connector attached to the routine | **Done**, 5 Sep 2026. Without it a fired session gets no Notion tools at all and every run dies at step 2. |
+| `graph.facebook.com` allowed in the environment's network policy | **Done**, 5 Sep 2026. Verified reachable from a session; before the change the proxy refused the tunnel outright. `prod-files-secure.s3.us-west-2.amazonaws.com`, where Notion serves the image, is allowed alongside it. |
+| `IG_BUSINESS_ACCOUNT_ID` | **Done**, 5 Sep 2026. Read straight off the Business Portfolio, which displays it — steps 5-8 of `meta-setup.md` are not the only way to get it. |
+| `IG_ACCESS_TOKEN` | **Outstanding.** Blocked on Meta for Developers registration, which is a Meta-side problem rather than anything here. Goes in as an API credential, not an environment variable — see [`meta-setup.md`](meta-setup.md#step-9--hand-the-two-values-over). |
 
-Until all three are done the routine runs and reports what is missing, rather
-than posting anything. That is the intended failure mode.
+Until the token is in place the routine runs, finds nothing approved or reports
+the missing credential, and posts nothing. That is the intended failure mode,
+not a fault to work around.
 
 ## Checking on it
 

@@ -131,9 +131,19 @@ python3 scripts/post_to_instagram.py \
   --caption-file caption.txt
 ```
 
-Reads `IG_BUSINESS_ACCOUNT_ID` and `IG_ACCESS_TOKEN` from the environment.
-`--dry-run` validates the credentials, the URL, the format and the aspect ratio
-without posting — use it to check a setup change.
+Reads `IG_BUSINESS_ACCOUNT_ID` from the environment. The access token can
+arrive two ways, and the script uses whichever is present:
+
+| Mode | How |
+|---|---|
+| **Proxy credential** (preferred) | Leave `IG_ACCESS_TOKEN` unset and store the token as an **API credential** on the cloud environment, scoped to `graph.facebook.com` with an `Authorization: Bearer` header. The proxy attaches it after the request leaves the container, so the token never reaches a variable, a log, or a shared session. |
+| **Environment variable** | Set `IG_ACCESS_TOKEN` and it travels in the request. Simpler, but readable by any session in the environment — which the environment dialog warns against. |
+
+Setting up either is [`references/meta-setup.md`](references/meta-setup.md) step 9.
+
+`--dry-run` authenticates against Meta, reports the account it reached and the
+mode it used, and posts nothing. It needs no `--image-url`, so it is the way to
+check a credential on its own. A failure names the mode that was in use.
 
 Meta fetches `image_url` from its own servers, so it must be publicly reachable
 at that moment. Take that URL from the **image block in the page body** — the

@@ -6,12 +6,27 @@ exactly the image URL and caption it is handed, and it has no idea what
 "approved" means. The approval gate lives in Notion, and the routine is
 responsible for only ever calling this with a row a human marked approved.
 
+The access token can reach Meta two ways, and the script uses whichever is
+available:
+
+    Proxy credential   Leave IG_ACCESS_TOKEN unset and store the token as an
+    (preferred)        API credential on the cloud environment, scoped to
+                       graph.facebook.com with an "Authorization: Bearer"
+                       header. The proxy attaches it after the request leaves
+                       the container, so the token never lands in a variable,
+                       a log, or a shared session.
+
+    Environment        Set IG_ACCESS_TOKEN and it travels in the request as a
+    variable           normal parameter. Simpler, but readable by any session
+                       in the environment.
+
 Environment:
-    IG_BUSINESS_ACCOUNT_ID   Instagram professional account ID (numeric)
-    IG_ACCESS_TOKEN          Long-lived Page access token
+    IG_BUSINESS_ACCOUNT_ID   Instagram professional account ID. Required.
+    IG_ACCESS_TOKEN          Long-lived Page access token. Optional; see above.
     IG_API_VERSION           Optional, defaults to v23.0
 
     python3 post_to_instagram.py --image-url "https://..." --caption "..."
+    python3 post_to_instagram.py --dry-run     # check the credentials alone
 """
 
 import argparse
@@ -29,6 +44,26 @@ DEFAULT_VERSION = "v23.0"
 # Instagram accepts 4:5 (0.8) through 1.91:1. A 1080x1350 post sits at the
 # 4:5 floor, which is exactly what the renderer produces.
 MIN_RATIO, MAX_RATIO = 0.8, 1.91
+
+# Substrings that mark a Graph error as an authentication problem rather than
+# a problem with the post itself. Matched case-insensitively. "Provide valid
+# app ID" is what Meta says when no token reached it at all, which is exactly
+# how an unattached proxy credential presents.
+AUTH_MARKERS = ("access token", "oauthexception", "code 190", "code 104",
+                "provide valid app id", "code 200")
+
+HINT_PROXY = (
+    "IG_ACCESS_TOKEN is not set, so this run expected the environment's proxy "
+    "to attach an API credential. Check that credential on the cloud "
+    "environment: host graph.facebook.com, header 'Authorization' with prefix "
+    "'Bearer'. The environment dialog marks a credential it cannot send as "
+    "'Not sent'. To fall back, set IG_ACCESS_TOKEN as an environment variable "
+    "instead."
+)
+HINT_ENV = (
+    "IG_ACCESS_TOKEN is set, so the token travelled in the request and Meta "
+    "rejected it. Regenerate it with steps 5-7 of references/meta-setup.md."
+)
 
 
 class GraphError(RuntimeError):
@@ -62,6 +97,50 @@ def _request(url, data=None, timeout=60):
             "environment's network policy must allow graph.facebook.com."
             % (GRAPH, exc.reason)
         ) from None
+
+
+def _base(version):
+    return "%s/%s" % (GRAPH, version)
+
+
+def _params(token, fields):
+    """POST body, carrying the token only when we hold it ourselves.
+
+    With no token the request goes out bare and the proxy adds the header, so
+    omitting the key is what selects proxy-credential auth.
+    """
+    params = dict(fields)
+    if token:
+        params["access_token"] = token
+    return params
+
+
+def _query(token, fields):
+    """The same rule for a GET, returned as an encoded query string."""
+    return urllib.parse.urlencode(_params(token, fields))
+
+
+def auth_mode(token):
+    return "environment variable" if token else "proxy API credential"
+
+
+def auth_hint(message, token):
+    """Explain an authentication failure in terms of the mode actually used."""
+    if not any(marker in message.lower() for marker in AUTH_MARKERS):
+        return ""
+    return HINT_ENV if token else HINT_PROXY
+
+
+def check_auth(ig_id, token, version):
+    """Confirm we can authenticate as this Instagram account.
+
+    This is the one call that proves a proxy-credential setup is wired
+    correctly, because it fails the same way a real post would but costs
+    nothing and publishes nothing.
+    """
+    info = _request("%s/%s?%s" % (_base(version), ig_id,
+                                  _query(token, {"fields": "id,username"})))
+    return {"id": info.get("id", ""), "username": info.get("username", "")}
 
 
 def check_image(url, timeout=45):
@@ -110,12 +189,12 @@ def check_image(url, timeout=45):
 
 
 def publish(ig_id, token, image_url, caption, version, poll_seconds=90):
-    base = "%s/%s" % (GRAPH, version)
+    base = _base(version)
 
     # 1. Create the media container. Meta fetches image_url at this moment.
     container = _request(
         "%s/%s/media" % (base, ig_id),
-        {"image_url": image_url, "caption": caption, "access_token": token},
+        _params(token, {"image_url": image_url, "caption": caption}),
     )
     creation_id = container.get("id")
     if not creation_id:
@@ -126,8 +205,8 @@ def publish(ig_id, token, image_url, caption, version, poll_seconds=90):
     status = None
     while time.time() < deadline:
         info = _request(
-            "%s/%s?fields=status_code,status&access_token=%s"
-            % (base, creation_id, urllib.parse.quote(token))
+            "%s/%s?%s" % (base, creation_id,
+                          _query(token, {"fields": "status_code,status"}))
         )
         status = info.get("status_code")
         if status == "FINISHED":
@@ -141,7 +220,7 @@ def publish(ig_id, token, image_url, caption, version, poll_seconds=90):
     # 3. Publish it.
     published = _request(
         "%s/%s/media_publish" % (base, ig_id),
-        {"creation_id": creation_id, "access_token": token},
+        _params(token, {"creation_id": creation_id}),
     )
     media_id = published.get("id")
     if not media_id:
@@ -151,7 +230,7 @@ def publish(ig_id, token, image_url, caption, version, poll_seconds=90):
     permalink = ""
     try:
         permalink = _request(
-            "%s/%s?fields=permalink&access_token=%s" % (base, media_id, urllib.parse.quote(token))
+            "%s/%s?%s" % (base, media_id, _query(token, {"fields": "permalink"}))
         ).get("permalink", "")
     except GraphError:
         pass
@@ -161,11 +240,13 @@ def publish(ig_id, token, image_url, caption, version, poll_seconds=90):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="Post one image to Instagram.")
-    p.add_argument("--image-url", required=True, help="Publicly fetchable JPEG URL.")
+    p.add_argument("--image-url", default="",
+                   help="Publicly fetchable JPEG URL. Optional with --dry-run.")
     p.add_argument("--caption", default="", help="Caption text.")
     p.add_argument("--caption-file", default="", help="Read the caption from a file instead.")
     p.add_argument("--ig-id", default=os.environ.get("IG_BUSINESS_ACCOUNT_ID", ""))
-    p.add_argument("--token", default=os.environ.get("IG_ACCESS_TOKEN", ""))
+    p.add_argument("--token", default=os.environ.get("IG_ACCESS_TOKEN", ""),
+                   help="Omit to let the environment's proxy credential supply it.")
     p.add_argument("--version", default=os.environ.get("IG_API_VERSION", DEFAULT_VERSION))
     p.add_argument("--dry-run", action="store_true",
                    help="Validate credentials and image, but do not post.")
@@ -176,10 +257,13 @@ def main(argv=None):
         with open(opts.caption_file, encoding="utf-8") as fh:
             caption = fh.read().strip()
 
-    missing = [n for n, v in (("IG_BUSINESS_ACCOUNT_ID", opts.ig_id),
-                              ("IG_ACCESS_TOKEN", opts.token)) if not v]
-    if missing:
-        print("Missing required credentials: %s" % ", ".join(missing), file=sys.stderr)
+    # The token is deliberately not checked here: an empty one means the proxy
+    # is expected to supply it, and only Meta can tell us whether it did.
+    if not opts.ig_id:
+        print("Missing required credential: IG_BUSINESS_ACCOUNT_ID", file=sys.stderr)
+        return 2
+    if not opts.image_url and not opts.dry_run:
+        print("--image-url is required unless you pass --dry-run.", file=sys.stderr)
         return 2
 
     # Instagram truncates hard at 2200 characters.
@@ -188,17 +272,24 @@ def main(argv=None):
         return 2
 
     try:
-        shape = check_image(opts.image_url)
+        account = check_auth(opts.ig_id, opts.token, opts.version)
+        shape = check_image(opts.image_url) if opts.image_url else {}
         if opts.dry_run:
-            print(json.dumps({"dry_run": True, "image": shape,
+            print(json.dumps({"dry_run": True, "auth": auth_mode(opts.token),
+                              "account": account, "image": shape,
                               "caption_chars": len(caption), "ok": True}))
             return 0
         result = publish(opts.ig_id, opts.token, opts.image_url, caption, opts.version)
     except GraphError as exc:
         print(str(exc), file=sys.stderr)
+        hint = auth_hint(str(exc), opts.token)
+        if hint:
+            print(hint, file=sys.stderr)
         return 1
 
     result["image"] = shape
+    result["auth"] = auth_mode(opts.token)
+    result["account"] = account
     print(json.dumps(result))
     return 0
 

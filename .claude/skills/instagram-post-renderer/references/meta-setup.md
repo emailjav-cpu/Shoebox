@@ -130,16 +130,56 @@ Instagram account is still Personal. Go back to steps 1–2.
 
 ## Step 9 — Hand the two values over
 
-Set them as environment variables on the Claude environment the routine runs in
-(claude.ai → Code → Environments → your environment → Environment variables):
+Both go on the cloud environment the routine runs in. Open it at
+[claude.ai/code](https://claude.ai/code): the cloud icon in the row above the
+message box, then the gear beside the environment's name. There is no settings
+page or direct URL for it.
 
-| Variable | From |
+The two values go in **different boxes**, and the difference matters.
+
+### `IG_BUSINESS_ACCOUNT_ID` → Environment variables
+
+From step 8, in `.env` format:
+
+```
+IG_BUSINESS_ACCOUNT_ID=17841400000000000
+```
+
+It is an account identifier, not a secret, so the variables box is the right
+home for it.
+
+### `IG_ACCESS_TOKEN` → API credentials
+
+From step 7. **Not** the variables box — that box states its contents are
+visible to anyone using the environment, and this token posts as you and never
+expires. Select **Add credential** and fill in:
+
+| Field | Value |
 |---|---|
-| `IG_BUSINESS_ACCOUNT_ID` | step 8 |
-| `IG_ACCESS_TOKEN` | step 7 |
+| Credential type | **Bearer** (the default) |
+| Name | anything, e.g. `Instagram publishing` |
+| Allowed websites | `graph.facebook.com` |
+| Custom headers | name `Authorization`, prefix `Bearer`, value = the token |
 
-Also allow **`graph.facebook.com`** in that environment's network policy, or the
-posting step cannot reach Meta at all.
+The proxy attaches it to Graph API requests after they leave the container, so
+the token never reaches the session, an environment variable, a log, or a
+shared session. `post_to_instagram.py` omits its own `access_token` parameter
+when `IG_ACCESS_TOKEN` is unset, and that omission is what selects this mode.
+
+You cannot view a credential's value after saving, and there is no edit — to
+change one, delete it and add it again. API credentials need a Pro or Max plan;
+on Team and Enterprise the section does not appear.
+
+If the credential ever misbehaves, setting `IG_ACCESS_TOKEN` as an ordinary
+environment variable still works and the script switches back on its own. That
+fallback is the reason to prefer the credential rather than fear it.
+
+### Network access
+
+Allow **`graph.facebook.com`** under **Network access → Custom**, keeping
+*"Also include default list of common package managers"* ticked so the existing
+allowances survive. A credential's hosts become reachable on their own, but the
+explicit entry costs nothing and keeps the two concerns separate.
 
 Paste the values into the environment settings rather than into chat, and never
 commit them to the repository.
@@ -147,12 +187,23 @@ commit them to the repository.
 ## Verifying before you trust it
 
 ```bash
-python3 scripts/post_to_instagram.py \
-  --image-url "https://example.com/a-real-1080x1350.jpg" --dry-run
+python3 scripts/post_to_instagram.py --dry-run
 ```
 
-Checks the credentials are present, the URL is publicly fetchable, the format is
-JPEG and the aspect ratio is legal — without posting anything.
+Authenticates against Meta and prints the account it actually reached, without
+posting and without needing an image:
+
+```json
+{"dry_run": true, "auth": "proxy API credential",
+ "account": {"id": "17841400000000000", "username": "javierdiaz.design"}}
+```
+
+Read the `auth` field. If it says `environment variable` when you meant to use
+a credential, `IG_ACCESS_TOKEN` is still set somewhere and is taking
+precedence — clear it.
+
+Add `--image-url "https://…"` to also check that a real image is publicly
+fetchable, is JPEG, and has a legal aspect ratio.
 
 ## When something breaks later
 
@@ -162,7 +213,8 @@ JPEG and the aspect ratio is legal — without posting anything.
 | `(#200) Permissions error` | A permission was dropped. Re-grant all five in step 5. |
 | `Unsupported get request` on the IG ID | Wrong ID — you used the Page ID or username instead of the `1784…` value. |
 | `The Instagram account is restricted` | Meta-side account limit; check Instagram's Account Status. |
-| `Media could not be fetched` | The image URL expired or wasn't public. Notion URLs last ~1 hour. |
+| `Media could not be fetched` | The image URL expired or wasn't public. Notion signs them for **5 minutes** — re-fetch the row and post in the same step. |
+| `(#200) Provide valid app ID` | No token reached Meta at all. In proxy-credential mode that means the credential isn't attached; the environment dialog marks one it can't send as **Not sent**. |
 | Unknown API version | Meta retired `v23.0`. Set `IG_API_VERSION` to a current version. |
 
 Rate limit: 100 published posts per rolling 24 hours. One a day uses 1%.
